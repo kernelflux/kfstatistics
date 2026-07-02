@@ -57,6 +57,7 @@ let package = Package(
             dependencies: [
                 "KFStatistics",
                 .product(name: "UMCommon", package: "umeng-spm"),
+                .product(name: "UMDevice", package: "umeng-spm"),
             ],
             path: "Sources/Adapters/Umeng",
             swiftSettings: [.swiftLanguageMode(.v6)]
