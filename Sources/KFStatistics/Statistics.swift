@@ -39,6 +39,10 @@ public enum KFStatistics {
 
     private static let _pipelineLock = OSAllocatedUnfairLock()
 
+    /// Events tracked before `start()` — flushed once the pipeline is ready.
+    nonisolated(unsafe) private static var _pendingEvents: [DynamicEvent] = []
+    private static let _pendingLock = OSAllocatedUnfairLock()
+
     // ────────────────────────────────────────────
     //  MARK: - Configuration
     // ────────────────────────────────────────────
@@ -82,6 +86,20 @@ public enum KFStatistics {
             }
 
             subscribeToAppLifecycleNotifications()
+
+            // Flush any events that were tracked before start()
+            let pending = _pendingLock.withLock {
+                let q = _pendingEvents
+                _pendingEvents = []
+                return q
+            }
+            if !pending.isEmpty {
+                Task(priority: .utility) {
+                    for event in pending {
+                        try? await pipeline.track(event)
+                    }
+                }
+            }
         } else {
             _pipelineLock.unlock()
         }
@@ -179,6 +197,9 @@ public enum KFStatistics {
         _pageTracker = nil
         _config = StatisticsConfig()
         _pipelineLock.unlock()
+        _pendingLock.lock()
+        _pendingEvents = []
+        _pendingLock.unlock()
     }
     #endif
 
@@ -198,11 +219,16 @@ public enum KFStatistics {
     // ────────────────────────────────────────────
 
     public static func track<E: EventProtocol>(_ event: E) {
-        if let dyn = event as? DynamicEvent {
-            configuration.sink?.report(event: dyn)
-        }
         let pipeline = readPipeline()
-        guard let pipeline else { return }
+        guard let pipeline else {
+            // Pipeline not ready yet — queue for flush on start()
+            if let dyn = event as? DynamicEvent {
+                _pendingLock.lock()
+                _pendingEvents.append(dyn)
+                _pendingLock.unlock()
+            }
+            return
+        }
         Task(priority: .utility) { try? await pipeline.track(event) }
     }
 

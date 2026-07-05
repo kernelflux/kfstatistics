@@ -31,12 +31,12 @@ struct TrackableMacroTests {
             struct ButtonClick: EventProtocol, Codable, Sendable {
                 let buttonId: String
                 let durationMs: Int64
-                static let eventName: String = "ButtonClick"
+                var eventName: String { "ButtonClick" }
                 static let schemaVersion: UInt32 = 1
-                static let fields: [FieldDescriptor] = [
+                var fields: [FieldDescriptor] { [
                     .init(name: "buttonId", type: .string),
                     .init(name: "durationMs", type: .int64),
-                ]
+                ] }
                 var eventID: UUID = .init()
                 var timestampMs: UInt64 = .now()
                 var sessionID: String = ""
@@ -55,9 +55,9 @@ struct TrackableMacroTests {
             """,
             expandedSource: """
             struct EmptyEvent: EventProtocol, Codable, Sendable {
-                static let eventName: String = "EmptyEvent"
+                var eventName: String { "EmptyEvent" }
                 static let schemaVersion: UInt32 = 1
-                static let fields: [FieldDescriptor] = [FieldDescriptor]()
+                var fields: [FieldDescriptor] { [FieldDescriptor]() }
                 var eventID: UUID = .init()
                 var timestampMs: UInt64 = .now()
                 var sessionID: String = ""
@@ -87,15 +87,15 @@ struct TrackableMacroTests {
                 let quantity: Int64
                 let taxExempt: Bool
                 let metadata: Data
-                static let eventName: String = "Purchase"
+                var eventName: String { "Purchase" }
                 static let schemaVersion: UInt32 = 1
-                static let fields: [FieldDescriptor] = [
+                var fields: [FieldDescriptor] { [
                     .init(name: "itemID", type: .string),
                     .init(name: "price", type: .double),
                     .init(name: "quantity", type: .int64),
                     .init(name: "taxExempt", type: .bool),
                     .init(name: "metadata", type: .data),
-                ]
+                ] }
                 var eventID: UUID = .init()
                 var timestampMs: UInt64 = .now()
                 var sessionID: String = ""

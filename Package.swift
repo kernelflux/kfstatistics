@@ -16,14 +16,10 @@ let package = Package(
         .library(name: "KFStatistics", targets: ["KFStatistics"]),
         .library(name: "KFStatisticsCore", targets: ["KFStatisticsCore"]),
         .library(name: "KFStatisticsMacros", targets: ["KFStatisticsMacros"]),
-        .library(name: "KFStatisticsChina", targets: ["KFStatistics", "UmengAdapter"]),
-        .library(name: "KFStatisticsGlobal", targets: ["KFStatistics", "FirebaseAnalyticsAdapter"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
         .package(url: "https://github.com/kernelflux/kfservice.git", from: "1.0.0"),
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "12.15.0"),
-        .package(url: "https://github.com/kernelflux/umeng-spm.git", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -44,35 +40,6 @@ let package = Package(
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
             ]
-        ),
-
-        // MARK: - China adapter (Umeng)
-        //
-        // Depends on umeng-spm mirror repo:
-        //   https://github.com/kernelflux/umeng-spm
-        // Contains UMCommon.xcframework + UMDevice.xcframework from Umeng 7.5.11
-
-        .target(
-            name: "UmengAdapter",
-            dependencies: [
-                "KFStatistics",
-                .product(name: "UMCommon", package: "umeng-spm"),
-                .product(name: "UMDevice", package: "umeng-spm"),
-            ],
-            path: "Sources/Adapters/Umeng",
-            swiftSettings: [.swiftLanguageMode(.v6)]
-        ),
-
-        // MARK: - Global adapter (Firebase)
-
-        .target(
-            name: "FirebaseAnalyticsAdapter",
-            dependencies: [
-                "KFStatistics",
-                .product(name: "FirebaseAnalytics", package: "firebase-ios-sdk"),
-            ],
-            path: "Sources/Adapters/FirebaseAnalytics",
-            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
 
         .target(

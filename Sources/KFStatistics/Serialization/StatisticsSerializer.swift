@@ -1,29 +1,28 @@
 // ── StatisticsSerializer Protocol ──
 
-protocol StatisticsSerializer {
-    func serialize<E: EventProtocol>(_ event: E) throws -> Data
-    func deserialize(_ data: Data, fields: [FieldDescriptor]) throws -> [String: Any]
-}
-
-// ──────────────────────────────────────────────
-//  StatisticsBinarySerializer — 二进制编码实现
-// ──────────────────────────────────────────────
-
 import Foundation
+
+public protocol StatisticsSerializer {
+    func serialize<E: EventProtocol>(_ event: E) throws -> Data
+    func deserialize(_ data: Data, fields: [FieldDescriptor]) throws -> [String: StatisticsValue]
+}
 
 // ═══════════════════════════════════════════════
 //  MARK: - Binary encoder (protobuf-compatible)
 // ═══════════════════════════════════════════════
 
-struct StatisticsBinarySerializer: StatisticsSerializer {
+public struct StatisticsBinarySerializer: StatisticsSerializer {
 
     init() {}
 
-    func serialize<E: EventProtocol>(_ event: E) throws -> Data {
+    public func serialize<E: EventProtocol>(_ event: E) throws -> Data {
+        if let dyn = event as? DynamicEvent {
+            return try serialize(dynamic: dyn)
+        }
         var output = Data()
         let mirror = Mirror(reflecting: event)
 
-        for (index, field) in E.fields.enumerated() {
+        for (index, field) in event.fields.enumerated() {
             guard let child = mirror.children
                 .first(where: { $0.label == field.name })?
                 .value
@@ -63,8 +62,38 @@ struct StatisticsBinarySerializer: StatisticsSerializer {
         return output
     }
 
-    func deserialize(_ data: Data, fields: [FieldDescriptor]) throws -> [String: Any] {
-        var result: [String: Any] = [:]
+    private func serialize(dynamic event: DynamicEvent) throws -> Data {
+        var output = Data()
+        let sortedKeys = event.properties.keys.sorted()
+        for (index, key) in sortedKeys.enumerated() {
+            guard let value = event.properties[key] else { continue }
+            let fieldType = value.fieldType
+            let tag = UInt64((UInt32(index + 1) << 3) | fieldType.wireType.rawValue)
+            output.appendVarint(tag)
+
+            switch value {
+            case .string(let v):
+                let strData = Data(v.utf8)
+                output.appendVarint(UInt64(strData.count))
+                output.append(strData)
+            case .int64(let v):
+                output.appendVarint(UInt64(bitPattern: v))
+            case .uint64(let v):
+                output.appendVarint(v)
+            case .double(let v):
+                withUnsafeBytes(of: v) { output.append(contentsOf: $0) }
+            case .bool(let v):
+                output.append(v ? 1 : 0)
+            case .data(let v):
+                output.appendVarint(UInt64(v.count))
+                output.append(v)
+            }
+        }
+        return output
+    }
+
+    public func deserialize(_ data: Data, fields: [FieldDescriptor]) throws -> [String: StatisticsValue] {
+        var result: [String: StatisticsValue] = [:]
         var offset = 0
 
         while offset < data.count {
@@ -84,32 +113,35 @@ struct StatisticsBinarySerializer: StatisticsSerializer {
                 offset = c1
                 let strData = data[offset..<offset + Int(len)]
                 offset += Int(len)
-                result[field.name] = String(data: strData, encoding: .utf8)
+                if let str = String(data: strData, encoding: .utf8) {
+                    result[field.name] = .string(str)
+                }
 
             case .int64:
                 let (val, c) = data.readVarint(at: offset)
                 offset = c
-                result[field.name] = Int64(bitPattern: val)
+                result[field.name] = .int64(Int64(bitPattern: val))
 
             case .uint64:
                 let (val, c) = data.readVarint(at: offset)
                 offset = c
-                result[field.name] = val
+                result[field.name] = .uint64(val)
 
             case .double:
                 let raw = data[offset..<offset + 8]
                 offset += 8
-                result[field.name] = Double(bitPattern: raw.withUnsafeBytes { $0.load(as: UInt64.self) })
+                let bits = raw.withUnsafeBytes { $0.load(as: UInt64.self) }
+                result[field.name] = .double(Double(bitPattern: bits))
 
             case .bool:
                 let (val, c) = data.readVarint(at: offset)
                 offset = c
-                result[field.name] = (val != 0)
+                result[field.name] = .bool(val != 0)
 
             case .data:
                 let (len, c1) = data.readVarint(at: offset)
                 offset = c1
-                result[field.name] = data[offset..<offset + Int(len)]
+                result[field.name] = .data(data[offset..<offset + Int(len)])
                 offset += Int(len)
             }
         }
@@ -180,5 +212,15 @@ extension Data {
         case 5: return offset + 4
         default: return offset
         }
+    }
+}
+
+// ═══════════════════════════════════════════════
+//  MARK: - StatisticsRecord convenience
+// ═══════════════════════════════════════════════
+
+extension StatisticsRecord {
+    public func deserialize() throws -> [String: StatisticsValue] {
+        try StatisticsBinarySerializer().deserialize(payload, fields: fields)
     }
 }

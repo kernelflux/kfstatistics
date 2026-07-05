@@ -3,8 +3,8 @@
 //
 //  The @Trackable macro expands a user's struct
 //  to add conformance to EventProtocol, including
-//  static eventName, schemaVersion, fields, and
-//  the required var properties.
+//  eventName, schemaVersion, fields, and the
+//  required var properties.
 //
 //  Input:
 //    @Trackable
@@ -18,12 +18,12 @@
 //        let buttonId: String
 //        let durationMs: Int64
 //
-//        static let eventName: String = "ButtonClick"
+//        var eventName: String { "ButtonClick" }
 //        static let schemaVersion: UInt32 = 1
-//        static let fields: [FieldDescriptor] = [
+//        var fields: [FieldDescriptor] { [
 //            .init(name: "buttonId",   type: .string),
 //            .init(name: "durationMs", type: .int64),
-//        ]
+//        ] }
 //
 //        var eventID: UUID = .init()
 //        var timestampMs: UInt64 = .now()
@@ -110,9 +110,9 @@ public enum TrackableMacro: MemberMacro, ExtensionMacro {
         }
 
         return [
-            DeclSyntax(stringLiteral: "static let eventName: String = \"\(structName)\""),
+            DeclSyntax(stringLiteral: "var eventName: String { \"\(structName)\" }"),
             DeclSyntax(stringLiteral: "static let schemaVersion: UInt32 = 1"),
-            DeclSyntax(stringLiteral: "static let fields: [FieldDescriptor] = \(fieldsArray)"),
+            DeclSyntax(stringLiteral: "var fields: [FieldDescriptor] { \(fieldsArray) }"),
             DeclSyntax(stringLiteral: "var eventID: UUID = .init()"),
             DeclSyntax(stringLiteral: "var timestampMs: UInt64 = .now()"),
             DeclSyntax(stringLiteral: "var sessionID: String = \"\""),

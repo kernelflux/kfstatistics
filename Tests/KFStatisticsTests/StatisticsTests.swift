@@ -16,12 +16,12 @@ import Foundation
 // manual conformance for testing.
 
 struct TestEvent: EventProtocol, Codable, Sendable {
-    static let eventName: String = "TestEvent"
+    var eventName: String { "TestEvent" }
     static let schemaVersion: UInt32 = 1
-    static let fields: [FieldDescriptor] = [
+    var fields: [FieldDescriptor] { [
         .init(name: "label", type: .string),
         .init(name: "count", type: .int64),
-    ]
+    ] }
 
     let label: String
     let count: Int64
@@ -32,9 +32,9 @@ struct TestEvent: EventProtocol, Codable, Sendable {
 }
 
 struct CriticalEvent: EventProtocol, Codable, Sendable {
-    static let eventName: String = "CriticalEvent"
+    var eventName: String { "CriticalEvent" }
     static let schemaVersion: UInt32 = 1
-    static let fields: [FieldDescriptor] = []
+    var fields: [FieldDescriptor] { [] }
 
     var eventID: UUID = .init()
     var timestampMs: UInt64 = .now()
@@ -51,7 +51,7 @@ struct EventProtocolTests {
 
     @Test("eventName is the struct name")
     func eventName() {
-        #expect(TestEvent.eventName == "TestEvent")
+        #expect(TestEvent(label: "a", count: 1).eventName == "TestEvent")
     }
 
     @Test("timestampMs is non-zero")
@@ -136,7 +136,7 @@ struct SerializerTests {
         let data = try serializer.serialize(event)
         #expect(!data.isEmpty)
 
-        let fields = try serializer.deserialize(data, fields: TestEvent.fields)
+        let fields = try serializer.deserialize(data, fields: event.fields)
         #expect(fields["label"] as? String == "hello")
         #expect(fields["count"] as? Int64 == 42)
     }
@@ -155,7 +155,8 @@ struct SerializerTests {
     @Test("deserialize empty data returns empty dict")
     func deserializeEmpty() throws {
         let serializer = StatisticsBinarySerializer()
-        let fields = try serializer.deserialize(Data(), fields: TestEvent.fields)
+        let event = TestEvent(label: "", count: 0)
+        let fields = try serializer.deserialize(Data(), fields: event.fields)
         #expect(fields.isEmpty)
     }
 }
@@ -239,47 +240,5 @@ struct DispatchTests {
         // Should not throw or crash
         let result = await dispatcher.dispatchNow()
         #expect(!result)
-    }
-}
-
-// ═══════════════════════════════════════════════
-//  MARK: - StatisticsSink Tests
-// ═══════════════════════════════════════════════
-
-@Suite("StatisticsSink")
-struct StatisticsSinkTests {
-
-    @Test("sink is forwarded from KFStatistics.track()")
-    func sinkForwardedFromTrack() {
-        final class MockSink: StatisticsSink, @unchecked Sendable {
-            var events: [DynamicEvent] = []
-            func report(event: DynamicEvent) { events.append(event) }
-        }
-
-        let mock = MockSink()
-        var config = StatisticsConfig()
-        config.sink = mock
-        let storage = StatisticsMockStorage()
-        let pipeline = StatisticsPipeline(storage: storage, config: config)
-
-        // Simulate a DynamicEvent going through the pipeline
-        let event = DynamicEvent(name: "test_event", properties: ["k": .string("v")])
-        // The pipeline processes but does NOT forward — so we test KFStatistics-level forwarding
-        Task { try? await pipeline.track(event) }
-
-        // Directly test the forwarding logic (same as in KFStatistics.track)
-        if let dyn = event as? DynamicEvent {
-            config.sink?.report(event: dyn)
-        }
-
-        #expect(mock.events.count == 1)
-        #expect(mock.events.first?.name == "test_event")
-    }
-
-    @Test("NoOpStatisticsSink does not crash")
-    func noOpSink() {
-        var config = StatisticsConfig()
-        config.sink = NoOpStatisticsSink()
-        config.sink?.report(event: DynamicEvent(name: "x", properties: [:], priority: .default))
     }
 }

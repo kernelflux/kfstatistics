@@ -305,15 +305,6 @@ public struct StatisticsConfig: Sendable {
     public var collectDeviceId: Bool
 
     // ╔══════════════════════════════════════════╗
-    // ║  9. 第三方转发 (Third-party Sink)         ║
-    // ╚══════════════════════════════════════════╝
-
-    /// 事件落盘后转发给商用 SDK（如 Umeng、Firebase）。
-    /// 设置 nil（默认）则不转发。
-    @StatisticsConfigurable(default: nil)
-    public var sink: (any StatisticsSink)?
-
-    // ╔══════════════════════════════════════════╗
     // ║  Init                                    ║
     // ╚══════════════════════════════════════════╝
 

@@ -12,7 +12,7 @@ import Foundation
 // ═══════════════════════════════════════════════
 
 /// Describes a single field of an event for binary serialisation.
-public struct FieldDescriptor: Sendable, Equatable {
+public struct FieldDescriptor: Sendable, Equatable, Codable {
     public let name: String
     public let type: FieldType
 
@@ -23,7 +23,7 @@ public struct FieldDescriptor: Sendable, Equatable {
 }
 
 /// Supported scalar field types for the binary encoder.
-public enum FieldType: Sendable, Equatable {
+public enum FieldType: Sendable, Equatable, Codable {
     case string
     case int64
     case uint64
@@ -53,9 +53,9 @@ public enum StatisticsPriority: UInt32, Sendable, Comparable {
 /// conformance — you normally do **not** adopt
 /// this manually.
 public protocol EventProtocol: Sendable, Codable {
-    static var eventName: String { get }
+    var eventName: String { get }
     static var schemaVersion: UInt32 { get }
-    static var fields: [FieldDescriptor] { get }
+    var fields: [FieldDescriptor] { get }
 
     var eventID: UUID { get set }
     var timestampMs: UInt64 { get set }
@@ -82,9 +82,13 @@ extension EventProtocol {
 
 public struct DynamicEvent: Sendable, EventProtocol {
 
-    public static var eventName: String { "" }
+    public var eventName: String { name }
     public static let schemaVersion: UInt32 = 1
-    public static let fields: [FieldDescriptor] = []
+    public var fields: [FieldDescriptor] {
+        properties.map { (key, value) in
+            FieldDescriptor(name: key, type: value.fieldType)
+        }
+    }
 
     public var eventID: UUID
     public var timestampMs: UInt64
@@ -148,6 +152,17 @@ public enum StatisticsValue: Sendable, Codable {
     case double(Double)
     case bool(Bool)
     case data(Data)
+
+    public var fieldType: FieldType {
+        switch self {
+        case .string: return .string
+        case .int64: return .int64
+        case .uint64: return .uint64
+        case .double: return .double
+        case .bool: return .bool
+        case .data: return .data
+        }
+    }
 
     // ── Manual Codable ──
     private enum CodingKey: String, Swift.CodingKey {

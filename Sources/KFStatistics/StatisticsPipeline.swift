@@ -83,7 +83,8 @@ final actor StatisticsPipeline {
                 sessionID: event.sessionID,
                 userID: config.userID,
                 priority: event.priority.rawValue,
-                payload: event.serializedPayload
+                payload: event.serializedPayload,
+                fields: event.fields
             )
         }
 

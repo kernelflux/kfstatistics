@@ -21,6 +21,8 @@ public struct StatisticsRecord: Sendable, Codable {
     public var priority: UInt32
     /// Opaque payload bytes.
     public var payload: Data
+    /// Field metadata for deserializing `payload`.
+    public var fields: [FieldDescriptor]
 
     public init(
         eventID: String,
@@ -30,7 +32,8 @@ public struct StatisticsRecord: Sendable, Codable {
         sessionID: String,
         userID: String,
         priority: UInt32,
-        payload: Data
+        payload: Data,
+        fields: [FieldDescriptor]
     ) {
         self.eventID = eventID
         self.eventName = eventName
@@ -40,6 +43,7 @@ public struct StatisticsRecord: Sendable, Codable {
         self.userID = userID
         self.priority = priority
         self.payload = payload
+        self.fields = fields
     }
 }
 

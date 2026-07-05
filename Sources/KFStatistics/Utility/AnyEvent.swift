@@ -21,12 +21,12 @@ struct AnyEvent: Sendable {
 
     init<E: EventProtocol>(_ event: E, serializer: some StatisticsSerializer) throws {
         self.eventID = event.eventID
-        self.eventName = E.eventName
+        self.eventName = event.eventName
         self.schemaVersion = E.schemaVersion
         self.timestampMs = event.timestampMs
         self.sessionID = event.sessionID
         self.priority = event.priority
-        self.fields = E.fields
+        self.fields = event.fields
         self.serializedPayload = try serializer.serialize(event)
     }
 }

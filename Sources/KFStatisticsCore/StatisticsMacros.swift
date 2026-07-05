@@ -30,9 +30,9 @@ import Foundation
 //          let pageName: String
 //          let durationMs: Int64
 //
-//          static let eventName = "ButtonClick"
+//          var eventName: String { "ButtonClick" }
 //          static let schemaVersion: UInt32 = 1
-//          static let fields: [FieldDescriptor] = [...]
+//          var fields: [FieldDescriptor] { [...] }
 //
 //          var eventID: UUID = .init()
 //          var timestampMs: UInt64 = .now()
