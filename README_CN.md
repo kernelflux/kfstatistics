@@ -4,7 +4,7 @@
 [![Platform](https://img.shields.io/badge/iOS-16.0+-blue?logo=apple)](https://developer.apple.com/ios)
 [![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen)](https://swift.org/package-manager)
 
-**KFStatistics**（KernelFlux Statistics）是纯 Swift 6 的事件埋点 SDK。基于 Actor 实现无锁并发，`@Trackable` 宏提供编译期类型安全的事件定义，Serializer → Storage → Transport 三层可插拔管线。
+**KFStatistics**（KernelFlux Statistics）是纯 Swift 6 的事件埋点 SDK。基于 Actor 实现无锁并发，`@Trackable` 宏提供编译期类型安全的事件定义，Serializer → Storage → Transport 可插拔管线。
 
 > [English](README.md)
 
@@ -17,7 +17,7 @@
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/kernelflux/kfstatistics.git", from: "1.0.0"),
+    .package(url: "https://github.com/kernelflux/kfstatistics.git", from: "1.0.5"),
 ],
 targets: [
     .target(name: "MyApp", dependencies: [
@@ -52,6 +52,27 @@ KFStatistics.configure { config in
 KFStatistics.start()
 ```
 
+或通过 KFService DI：
+
+```swift
+import KFService
+import KFStatistics
+
+// App init
+ServiceContainer.shared.install(KFStatisticsAssembly())
+
+// App.task
+try await Engine.run(modules: [
+    KFStatisticsStartupModule(config: {
+        var c = StatisticsConfig()
+        c.appKey = "haircare"
+        c.uploadMode = .intelligent
+        c.uploadThreshold = 30
+        return c
+    }()),
+])
+```
+
 ### 4. 埋点
 
 ```swift
@@ -74,44 +95,42 @@ KFStatistics.track("Custom", ["key": "value", "count": 42])
               │
      ┌────────▼────────┐
      │   Serializer     │  结构体字段 → 二进制 payload
-     │   (内部实现)      │
+     │   (公开)          │
      └────────┬────────┘
               │ 二进制 payload
      ┌────────▼────────┐
-     │   Pipeline       │  Batch → PropertyList 二进制（比 JSON 快 2-3 倍）
+     │   Pipeline       │  Batch → PropertyList 二进制
      │   (Actor)        │
      └────────┬────────┘
-              │ 纯二进制 Data（无 base64 膨胀）
+              │ 纯二进制 Data
      ┌────────▼────────┐
      │  Storage (mmap)  │  崩溃安全，append-only WAL
      │   (内部实现)      │
      └────────┬────────┘
               │ 二进制 Data
      ┌────────▼────────┐
-     │  Dispatcher      │  popAll → decode → 回调
+     │  Dispatcher      │  popAll → uploadHandler
      │   (Actor)        │
      └────────┬────────┘
-              │ StatisticsBatch（原生 Swift 模型）
+              │ StatisticsBatch
      ┌────────┴────────┐
      │                  │
 ┌────▼───────┐  ┌───────▼──────────┐
 │ upload     │  │ Statistics       │
 │ Handler    │  │ Transport         │
 │ (简易方式)  │  │ (高级方式)        │
-│            │  │                   │
-│ 收到 Batch │  │ 内部自行选择编码：  │
-│ 自由编码   │  │ JSON / binary /   │
-│ JSON/pb 等 │  │ / 其他             │
 └────────────┘  └───────────────────┘
 ```
 
-### 三层可插拔
+所有事件走统一链路：track → 序列化 → 持久化 → dispatch。`uploadHandler` / `StatisticsTransport` 收到 `StatisticsRecord`，包含 `eventName`、`payload`（protobuf 二进制，用于高效网络传输）和 `fields` 元数据（用于反序列化）。
+
+### 可插拔层级
 
 | 层级 | 协议 | 默认实现 | 外部可替换 |
 |------|------|---------|:--------:|
 | 传输 | `StatisticsTransport`（公开） | `StatisticsHTTPTransport` (URLSession) | ✅ |
 | 存储 | `StatisticsStorage`（内部） | `StatisticsFileStorage` (mmap WAL) | ❌ |
-| 序列化 | `StatisticsSerializer`（内部） | `StatisticsBinarySerializer` | ❌ |
+| 序列化 | `StatisticsSerializer`（公开） | `StatisticsBinarySerializer` | ✅ |
 
 ---
 
@@ -119,7 +138,7 @@ KFStatistics.track("Custom", ["key": "value", "count": 42])
 
 **Actor 并发替代锁。** Pipeline 和 Dispatcher 均为 Swift Actor，热路径无锁竞争。事件入队通过无锁 RingBuffer，所有 I/O（序列化、文件写入、网络）在主线程外完成。
 
-**二进制序列化替代 JSON。** 每个 `@Trackable` 结构体在编译期生成字段描述表（`[FieldDescriptor]`），序列化器使用 PropertyList 二进制格式——编码速度比 JSON 快 2-3 倍，产物体积更小。
+**二进制序列化。** 每个 `@Trackable` 结构体在编译期生成字段描述表（`[FieldDescriptor]`），序列化器使用 protobuf 兼容的二进制格式——产物体积小，适合百万日活级别的网络传输。
 
 **mmap 持久化。** 文件存储采用内存映射 I/O + 追加写 + WAL，崩溃安全：最多丢失 1 条事件。
 
@@ -163,22 +182,51 @@ KFStatistics.configure { config in
 }
 ```
 
-### 高级方式：实现 `StatisticsTransport` 协议
+同时设置 `uploadHandler` 和 `transport` 时，`transport` 优先。
+
+---
+
+## 第三方 SDK 转发（友盟 / Firebase）
+
+商业化 SDK 在 `uploadHandler` 中转发，走完持久化之后才调。通过 `record.deserialize()` 将二进制 payload 反序列化为键值字典：
 
 ```swift
-struct GRPCTransport: StatisticsTransport {
-    func send(batch: StatisticsBatch) async throws -> Int {
-        // 自定义 gRPC 实现
-        return batch.events.count
+// 友盟（中国区）
+config.uploadHandler = { batch in
+    for record in batch.events {
+        var attrs = [String: String]()
+        let props = (try? record.deserialize()) ?? [:]
+        for (k, v) in props {
+            if case .string(let s) = v { attrs[k] = s }
+        }
+        MobClick.event(record.eventName, attributes: attrs)
     }
+    // ... 然后可选地 HTTP 上传到自研服务端
+    return batch.events.count
 }
 
-KFStatistics.configure { config in
-    config.transport = GRPCTransport()
+// Firebase（国际区）
+config.uploadHandler = { batch in
+    for record in batch.events {
+        var params: [String: Any] = [:]
+        let props = (try? record.deserialize()) ?? [:]
+        for (k, v) in props {
+            switch v {
+            case .string(let s): params[k] = s
+            case .int64(let i):  params[k] = i
+            case .uint64(let u): params[k] = u
+            case .double(let d): params[k] = d
+            case .bool(let b):   params[k] = b ? "true" : "false"
+            case .data:          break
+            }
+        }
+        Analytics.logEvent(record.eventName, parameters: params.isEmpty ? nil : params)
+    }
+    return batch.events.count
 }
 ```
 
-同时设置 `uploadHandler` 和 `transport` 时，`transport` 优先。
+宿主 App 自行决定是否集成友盟/Firebase——kfstatistics 不依赖任何商业化 SDK。
 
 ---
 
@@ -235,7 +283,8 @@ struct HomeView: View {
 | Product | 说明 |
 |---------|------|
 | `KFStatistics` | 完整 SDK（Core + Macros + Runtime） |
-| `KFStatisticsCore` | 纯协议层 — `EventProtocol`、`StatisticsConfig`、`StatisticsTransport` |
+| `KFStatisticsCore` | 纯协议层 — `EventProtocol`、`StatisticsConfig`、`StatisticsTransport`、`StatisticsBatch` |
+| `KFStatisticsMacros` | `@Trackable` 宏实现 |
 
 ---
 
@@ -269,10 +318,10 @@ Sources/
 │   ├── StatisticsBatch.swift      Batch 模型
 │   ├── StatisticsTransport.swift  StatisticsTransport 协议, UploadHandler
 │   └── StatisticsTrackablePage.swift
-├── KFStatistics/              ← 运行时引擎（依赖 Core + Macros）
+├── KFStatistics/              ← 运行时引擎
 │   ├── Statistics.swift           公开入口（KFStatistics enum）
 │   ├── StatisticsPipeline.swift   Actor 批处理 + 序列化
-│   ├── Serialization/             二进制序列化器
+│   ├── Serialization/             二进制序列化器（1.0.5 起公开）
 │   ├── Storage/                   mmap 文件存储
 │   ├── Dispatch/                  Dispatcher Actor + 传输
 │   ├── AutoTracking/              UIKit Swizzling + SwiftUI Modifier
