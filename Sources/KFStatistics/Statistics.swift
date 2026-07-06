@@ -67,18 +67,10 @@ public enum KFStatistics {
     //  MARK: - Preload (eager init)
     // ────────────────────────────────────────────
 
-    /// Earliest available timestamp, captured in `preload()` during `App.init()`.
-    /// Use this instead of `ProcessInfo.processStartTime` (not available on iOS).
-    nonisolated(unsafe) private static var _processStartTime: Date?
-    public static var processStartTime: Date {
-        _processStartTime ?? Date()
-    }
-
     /// Force initialization of static storage before any view renders.
     /// Call this from `KFStatisticsAssembly.assemble()` (which runs in `App.init()`)
     /// so that `_pageTracker` is ready before the first `.onAppear` fires.
     public static func preload() {
-        _processStartTime = Date()
         _ = _pageTracker
     }
 
