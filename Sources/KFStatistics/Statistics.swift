@@ -35,7 +35,10 @@ public enum KFStatistics {
 
     nonisolated(unsafe) private static var _pipeline: StatisticsPipeline?
     nonisolated(unsafe) private static var _dispatcher: StatisticsDispatcher?
-    nonisolated(unsafe) private static var _pageTracker: StatisticsPageTracker?
+    /// Always-on tracker for SwiftUI `.trackPage()` modifier.
+    /// Created at module init — before any view renders — so
+    /// the first `.onAppear` notification is never missed.
+    private static let _pageTracker = StatisticsPageTracker()
 
     private static let _pipelineLock = OSAllocatedUnfairLock()
 
@@ -58,6 +61,25 @@ public enum KFStatistics {
         _configLock.lock()
         defer { _configLock.unlock() }
         return _config
+    }
+
+    // ────────────────────────────────────────────
+    //  MARK: - Preload (eager init)
+    // ────────────────────────────────────────────
+
+    /// Earliest available timestamp, captured in `preload()` during `App.init()`.
+    /// Use this instead of `ProcessInfo.processStartTime` (not available on iOS).
+    nonisolated(unsafe) private static var _processStartTime: Date?
+    public static var processStartTime: Date {
+        _processStartTime ?? Date()
+    }
+
+    /// Force initialization of static storage before any view renders.
+    /// Call this from `KFStatisticsAssembly.assemble()` (which runs in `App.init()`)
+    /// so that `_pageTracker` is ready before the first `.onAppear` fires.
+    public static func preload() {
+        _processStartTime = Date()
+        _ = _pageTracker
     }
 
     // ────────────────────────────────────────────
@@ -173,7 +195,6 @@ public enum KFStatistics {
         #if canImport(UIKit)
         if config.enableAutoPageTracking {
             UIViewController.enablePageAutoTracking()
-            _pageTracker = StatisticsPageTracker()
         }
         #endif
     }
@@ -194,7 +215,6 @@ public enum KFStatistics {
         _pipelineLock.lock()
         _pipeline = nil
         _dispatcher = nil
-        _pageTracker = nil
         _config = StatisticsConfig()
         _pipelineLock.unlock()
         _pendingLock.lock()
@@ -209,7 +229,6 @@ public enum KFStatistics {
         let p = _pipeline
         _dispatcher = nil
         _pipeline = nil
-        _pageTracker = nil
         _pipelineLock.unlock()
         return (d, p)
     }

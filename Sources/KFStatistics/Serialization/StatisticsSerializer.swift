@@ -111,8 +111,10 @@ public struct StatisticsBinarySerializer: StatisticsSerializer {
             case .string:
                 let (len, c1) = data.readVarint(at: offset)
                 offset = c1
-                let strData = data[offset..<offset + Int(len)]
-                offset += Int(len)
+                let byteLen = Int(len)
+                guard byteLen > 0, offset + byteLen <= data.count else { return result }
+                let strData = data[offset..<offset + byteLen]
+                offset += byteLen
                 if let str = String(data: strData, encoding: .utf8) {
                     result[field.name] = .string(str)
                 }
@@ -128,6 +130,7 @@ public struct StatisticsBinarySerializer: StatisticsSerializer {
                 result[field.name] = .uint64(val)
 
             case .double:
+                guard offset + 8 <= data.count else { return result }
                 let raw = data[offset..<offset + 8]
                 offset += 8
                 let bits = raw.withUnsafeBytes { $0.load(as: UInt64.self) }
@@ -141,8 +144,10 @@ public struct StatisticsBinarySerializer: StatisticsSerializer {
             case .data:
                 let (len, c1) = data.readVarint(at: offset)
                 offset = c1
-                result[field.name] = .data(data[offset..<offset + Int(len)])
-                offset += Int(len)
+                let byteLen = Int(len)
+                guard byteLen > 0, offset + byteLen <= data.count else { return result }
+                result[field.name] = .data(data[offset..<offset + byteLen])
+                offset += byteLen
             }
         }
         return result

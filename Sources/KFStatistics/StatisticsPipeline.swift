@@ -96,7 +96,9 @@ final actor StatisticsPipeline {
         )
 
         let data = try batch.binaryData()
+
         try await storage.append(data, forKey: walKey)
+
         lastFlushTime = Date()
     }
 

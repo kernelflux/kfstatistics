@@ -85,8 +85,9 @@ public struct DynamicEvent: Sendable, EventProtocol {
     public var eventName: String { name }
     public static let schemaVersion: UInt32 = 1
     public var fields: [FieldDescriptor] {
-        properties.map { (key, value) in
-            FieldDescriptor(name: key, type: value.fieldType)
+        properties.keys.sorted().compactMap { key in
+            guard let value = properties[key] else { return nil }
+            return FieldDescriptor(name: key, type: value.fieldType)
         }
     }
 

@@ -219,8 +219,8 @@ public struct StatisticsConfig: Sendable {
     // ╚══════════════════════════════════════════╝
 
     /// 自动页面埋点（Swizzle UIViewController）。
-    /// 默认 true，参考友盟/神策默认行为。
-    @StatisticsConfigurable(default: true)
+    /// 仅对 UIKit 页面生效，SwiftUI 请使用 `.trackPage("PageName")`。
+    @StatisticsConfigurable(default: false)
     public var enableAutoPageTracking: Bool
 
     /// 自动点击埋点（预留）。

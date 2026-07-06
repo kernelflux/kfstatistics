@@ -22,11 +22,11 @@ public final actor StatisticsMockStorage: StatisticsStorage {
         estimatedByteCount += UInt64(data.count)
     }
 
-    public func popAll(forKey key: String) async throws -> Data? {
-        let data = store[key]
+    public func popAll(forKey key: String) async throws -> [Data] {
+        guard let data = store[key] else { return [] }
         store[key] = nil
         estimatedByteCount = 0
-        return data
+        return [data]
     }
 
     public func flush() async throws {}

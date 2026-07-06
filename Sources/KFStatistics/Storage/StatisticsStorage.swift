@@ -35,8 +35,8 @@ protocol StatisticsStorage: Actor {
     func append(_ data: Data, forKey key: String) async throws
 
     /// Atomically read **and clear** all data for `key`.
-    /// Returns `nil` if no data exists.
-    func popAll(forKey key: String) async throws -> Data?
+    /// Returns an array of individual batch payloads (one per frame).
+    func popAll(forKey key: String) async throws -> [Data]
 
     /// Persist pending writes to disk.
     func flush() async throws

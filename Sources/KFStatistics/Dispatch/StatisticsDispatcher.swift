@@ -124,44 +124,53 @@ final actor StatisticsDispatcher {
         isUploading = true
         defer { isUploading = false }
 
-        guard let rawData = try? await storage.popAll(forKey: "events_wal"),
-              !rawData.isEmpty
-        else {
-            consecutiveFailures = 0
-            return false
-        }
-
-        let batch: StatisticsBatch
+        let batches: [Data]
         do {
-            batch = try StatisticsBatch.from(binaryData: rawData)
+            batches = try await storage.popAll(forKey: "events_wal")
         } catch {
-            log("[KFStatistics] ⚠️ corrupt batch: \(error)", level: .warning)
+            consecutiveFailures = 0
+            return false
+        }
+        guard !batches.isEmpty else {
             consecutiveFailures = 0
             return false
         }
 
-        for attempt in 0..<max(1, config.maxRetries) {
+        var anySent = false
+        for rawData in batches {
+            guard !rawData.isEmpty else { continue }
+
+            let batch: StatisticsBatch
             do {
-                let accepted = try await transport.send(batch: batch)
-                consecutiveFailures = 0
-                log("[KFStatistics] ✅ sent \(accepted) event(s)", level: .info)
-                return true
-
-            } catch StatisticsTransportError.invalidResponse(let code) where code == 429 {
-                let delay = backoffDelay(for: attempt)
-                log("[KFStatistics] ⏳ rate-limited, retry in \(delay)s", level: .warning)
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
+                batch = try StatisticsBatch.from(binaryData: rawData)
             } catch {
-                consecutiveFailures += 1
-                let delay = backoffDelay(for: attempt)
-                log("[KFStatistics] 🔴 send failed (\(error)), retry in \(delay)s", level: .error)
-                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                log("[KFStatistics] corrupt batch: \(error)", level: .warning)
+                continue
+            }
+
+            for attempt in 0..<max(1, config.maxRetries) {
+                do {
+                    let accepted = try await transport.send(batch: batch)
+                    consecutiveFailures = 0
+                    log("[KFStatistics] sent \(accepted) event(s)", level: .info)
+                    anySent = true
+                    break
+
+                } catch StatisticsTransportError.invalidResponse(let code) where code == 429 {
+                    let delay = backoffDelay(for: attempt)
+                    log("[KFStatistics] rate-limited, retry in \(delay)s", level: .warning)
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+                } catch {
+                    consecutiveFailures += 1
+                    let delay = backoffDelay(for: attempt)
+                    log("[KFStatistics] send failed (\(error)), retry in \(delay)s", level: .error)
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
             }
         }
 
-        try? await storage.append(rawData, forKey: "events_wal_retry")
-        return false
+        return anySent
     }
 
     // ────────────────────────────────────────────
